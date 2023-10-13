@@ -1,0 +1,19 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: my-awesome-app
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/aliasadev/argocd-cmp.git
+    targetRevision: main
+    path: my-awesome-app
+    plugin:
+      name: gomplate
+      env:
+        - name: CUSTOM_ENV_VARIABLE # argocd prepends the env vars with ARGOCD_ENV_
+          value: bar
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: my-awesome-app

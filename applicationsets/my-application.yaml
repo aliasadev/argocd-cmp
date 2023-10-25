@@ -1,0 +1,36 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: my-application
+  namespace: argocd
+spec:
+  generators:
+    # list of clusters which installs this application
+    - list:
+        elements:
+          - name: in-cluster
+            server: https://kubernetes.default.svc
+
+  template:
+    metadata:
+      name: "{{name}}-my-application"
+    spec:
+      project: default
+      syncPolicy:
+        syncOptions:
+          - CreateNamespace=true
+          - SkipDryRunOnMissingResource=true
+      ignoreDifferences: []
+      source:
+        repoURL: https://github.com/nazari-dev/argocd-cmp
+        targetRevision: main
+        path: "src/my-application"
+        plugin:
+          name: gomplate
+          env:
+            - name: DATASET
+              value: "dataset"
+
+      destination:
+        server: "{{server}}"
+        namespace: "my-application"

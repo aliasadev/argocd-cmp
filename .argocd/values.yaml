@@ -3,12 +3,17 @@ global:
     # -- Set the global logging format. Either: `text` or `json`
     format: json
 
+dex:
+  enabled: false
+notifications:
+  enabled: false
+
 configs:
   secret:
     # -- Bcrypt hashed admin password
     ## Argo expects the password in the secret to be bcrypt hashed. You can create this hash with
     ## `htpasswd -nbBC 10 "" $ARGO_PWD | tr -d ':\n' | sed 's/$2y/$2a/'`
-    argocdServerAdminPassword: $2a$10$pJ3Vhrtqu/Ta9UMvkO9W0eJ8tpnN483cOwOfEvZyzT4xWM7w36EwO
+    argocdServerAdminPassword: $2a$10$pJ3Vhrtqu/Ta9UMvkO9W0eJ8tpnN483cOwOfEvZyzT4xWM7w36EwO # 123
     argocdServerAdminPasswordMtime: "2023-09-18T08:42:51Z"
 
   params:
@@ -17,40 +22,60 @@ configs:
 
   # -- Plugin yaml files to be added to argocd-cmp-cm
   cmp:
+    create: true
     plugins:
-      # --- First plugin
-      # my-plugin:
-      #   init:
-      #     command: [sh]
-      #     args: [-c, 'echo "Initializing..."']
-      #   generate:
-      #     command: [sh, -c]
-      #     args:
-      #       - |
-      #         echo "{\"kind\": \"ConfigMap\", \"apiVersion\": \"v1\", \"metadata\": { \"name\": \"$ARGOCD_APP_NAME\", \"namespace\": \"$ARGOCD_APP_NAMESPACE\", \"annotations\": {\"Foo\": \"$ARGOCD_ENV_FOO\", \"KubeVersion\": \"$KUBE_VERSION\", \"KubeApiVersion\": \"$KUBE_API_VERSIONS\",\"Bar\": \"baz\"}}}"
-      #   discover:
-      #     fileName: "./subdir/s*.yaml"
-      #     find:
-      #       glob: "**/Chart.yaml"
-      #       command: [sh, -c, find . -name env.yaml]
+      helm-gomplate:
+        init:
+          command: [sh, -c]
+          args: ["helm dependency update"]
+        generate:
+          command: [sh, -c]
+          args:
+            - export TTT=POP && helm template $ARGOCD_ENV_HELM_RELEASE_NAME . --namespace=$ARGOCD_APP_NAMESPACE --create-namespace -f $ARGOCD_ENV_HELM_VALUES --post-renderer gomplate --post-renderer-args '--left-delim=<<' --post-renderer-args '--right-delim=>>' --post-renderer-args '-d params=aws+smp:' --include-crds
 
-      # --- Second plugin
-      # my-plugin2:
-      #   init:
-      #     command: [sh]
-      #     args: [-c, 'echo "Initializing..."']
-      #   generate:
-      #     command: [sh, -c]
-      #     args:
-      #       - |
-      #         echo "{\"kind\": \"ConfigMap\", \"apiVersion\": \"v1\", \"metadata\": { \"name\": \"$ARGOCD_APP_NAME\", \"namespace\": \"$ARGOCD_APP_NAMESPACE\", \"annotations\": {\"Foo\": \"$ARGOCD_ENV_FOO\", \"KubeVersion\": \"$KUBE_VERSION\", \"KubeApiVersion\": \"$KUBE_API_VERSIONS\",\"Bar\": \"baz\"}}}"
-      #   discover:
-      #     fileName: "./subdir/s*.yaml"
-      #     find:
-      #       glob: "**/Chart.yaml"
-      #       command: [sh, -c, find . -name env.yaml]
+repoServer:
+  extraContainers:
+    - name: helm-gomplate
+      command:
+        - "/var/run/argocd/argocd-cmp-server"
+      image: alpine:3
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+      volumeMounts:
+        - mountPath: /usr/bin
+          name: cmp-tmp
+        - mountPath: /var/run/argocd
+          name: var-files
+        - mountPath: /home/argocd/cmp-server/plugins
+          name: plugins
+        - mountPath: /home/argocd/cmp-server/config/plugin.yaml
+          name: argocd-cmp-cm
+          subPath: helm-gomplate.yaml
+        - mountPath: /helm-working-dir
+          name: helm-working-dir
+      env:
+        - name: HELM_CACHE_HOME
+          value: /helm-working-dir
+        - name: HELM_CONFIG_HOME
+          value: /helm-working-dir
+        - name: HELM_DATA_HOME
+          value: /helm-working-dir
+  initContainers:
+    - name: install-gomplate    
+      image: alpine:3
+      command: ["sh", "-c"]
+      args:
+        - apk add --no-cache helm gomplate
+      volumeMounts:
+        - mountPath: /usr/bin
+          name: cmp-tmp
 
-dex:
-  enabled: false
-notifications:
-  enabled: false
+  # -- Additional volumes to the repo server pod
+  volumes:
+    # This is the config map all the CMPs are defined
+    - name: argocd-cmp-cm
+      configMap:
+        name: argocd-cmp-cm
+    - name: cmp-tmp
+      emptyDir: {}

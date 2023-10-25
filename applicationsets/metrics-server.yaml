@@ -1,0 +1,42 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: metrics-server
+  namespace: argocd
+spec:
+  generators:
+    # list of clusters which installs this application
+    - list:
+        elements:
+          - name: in-cluster
+            server: https://kubernetes.default.svc
+
+  template:
+    metadata:
+      name: "{{name}}-metrics-server"
+    spec:
+      project: default
+      syncPolicy:
+        syncOptions:
+          - CreateNamespace=true
+          - SkipDryRunOnMissingResource=true
+      ignoreDifferences: []
+      source:
+        repoURL: https://github.com/nazari-dev/argocd-minikube
+        targetRevision: main
+        path: "src/metrics-server"
+        # helm:
+          # releaseName: "metrics-server"
+          # valueFiles:
+            # - "{{name}}.yaml"
+        plugin:
+          name: helm-gomplate
+          env:
+            - name: HELM_VALUES
+              value: "{{name}}.yaml"
+            - name: HELM_RELEASE_NAME
+              value: metrics-server
+
+      destination:
+        server: "{{server}}"
+        namespace: "metrics-server"

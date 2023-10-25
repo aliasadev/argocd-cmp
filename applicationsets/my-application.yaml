@@ -29,7 +29,7 @@ spec:
           name: gomplate
           env:
             - name: DATASET
-              value: "dataset"
+              value: "./dataset.json"
 
       destination:
         server: "{{server}}"
